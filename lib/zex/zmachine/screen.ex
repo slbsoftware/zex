@@ -9,9 +9,9 @@ defmodule Zex.ZMachine.Screen do
 
   def print(screen, s) do
     s = String.replace(s, "\r", "\n")
-    # IO.puts("- print line=#{inspect(screen.line)} s=#{inspect(s)}")
-    screen = %Screen{line: screen.line <> s}
-    flush(screen)
+    # screen = %Screen{line: screen.line <> s}
+    # flush(screen)
+    IO.write(s)
   end
 
   def flush(screen) do

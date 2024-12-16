@@ -113,8 +113,8 @@ defmodule Zex.ZMachine do
     0x64 => &ZMachine.iV_sread/1,
     0x65 => &ZMachine.iV_print_char/1,
     0x66 => &ZMachine.iV_print_num/1,
-    # 0x67 => &ZMachine.iV_random/1,
-    0x67 => &ZMachine.iV_randomD/1,
+    0x67 => &ZMachine.iV_random/1,
+    # 0x67 => &ZMachine.iV_randomD/1,
     0x68 => &ZMachine.iV_push/1,
     0x69 => &ZMachine.iV_pull/1,
     0x6a => &ZMachine.iV_split_window/1,
@@ -343,7 +343,6 @@ defmodule Zex.ZMachine do
   end
 
   def processInput(z, input) when z.state == :waitInput do
-    z = print(z, " " <> input <> "\r")
     case Memory.tokenize(z.memory, input, z.textBuffer, z.parseBuffer) do
       {:ok, memory} ->
         z = %ZMachine{z | memory: memory, state: :running}
@@ -378,7 +377,6 @@ defmodule Zex.ZMachine do
   end
 
   def drawScreen(z) do
-    raise "drawScreen"
     z
   end
 
@@ -404,7 +402,8 @@ defmodule Zex.ZMachine do
   end
 
   def i0_save(z) do
-    raise "save"
+  	{:ok, data} = Jason.encode(%{memory: z.memory.written, stack: z.stack})
+  	IO.puts(data)
     z
   end
 
@@ -414,8 +413,7 @@ defmodule Zex.ZMachine do
   end
 
   def i0_restart(z) do
-    raise "restart"
-    z
+  	%ZMachine{z | state: :restart}
   end
 
   def i0_ret_popped(z) do
@@ -429,8 +427,7 @@ defmodule Zex.ZMachine do
   end
 
   def i0_quit(z) do
-    raise "quit"
-    z
+  	%ZMachine{z | state: :quit}
   end
 
   def i0_new_line(z) do
