@@ -7,7 +7,7 @@ defmodule Zex.ZMachine.Screen do
     %Screen{line: ""}
   end
 
-  def print(screen, s) do
+  def print(_screen, s) do
     s = String.replace(s, "\r", "\n")
     # screen = %Screen{line: screen.line <> s}
     # flush(screen)
