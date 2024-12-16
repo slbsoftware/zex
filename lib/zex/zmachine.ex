@@ -402,8 +402,8 @@ defmodule Zex.ZMachine do
   end
 
   def i0_save(z) do
-  	{:ok, data} = Jason.encode(%{memory: z.memory.written, stack: z.stack})
-  	IO.puts(data)
+    {:ok, data} = Jason.encode(%{memory: z.memory.written, stack: z.stack})
+    IO.puts(data)
     z
   end
 
@@ -413,7 +413,7 @@ defmodule Zex.ZMachine do
   end
 
   def i0_restart(z) do
-  	%ZMachine{z | state: :restart}
+    %ZMachine{z | state: :restart}
   end
 
   def i0_ret_popped(z) do
@@ -427,7 +427,7 @@ defmodule Zex.ZMachine do
   end
 
   def i0_quit(z) do
-  	%ZMachine{z | state: :quit}
+    %ZMachine{z | state: :quit}
   end
 
   def i0_new_line(z) do
