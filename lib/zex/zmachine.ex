@@ -696,10 +696,6 @@ defmodule Zex.ZMachine do
   end
 
   def iV_sread(z) do
-    # textBuffer  = operands[0];
-    # parseBuffer = operands[1];
-    # state   = WAITINPUT;
-
     %ZMachine{z |
       state: :waitInput,
       textBuffer: elem(z.operands, 0),

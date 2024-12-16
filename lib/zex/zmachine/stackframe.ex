@@ -1,7 +1,7 @@
 defmodule Zex.ZMachine.StackFrame do
   alias Zex.ZMachine.StackFrame
 
-	@derive Jason.Encoder  
+  @derive Jason.Encoder
   defstruct [:nextIp, :locals, :stack, :storeReturn]
 
   def new(nextIp, storeReturn) do
