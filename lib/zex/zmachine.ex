@@ -2,6 +2,7 @@ defmodule Zex.ZMachine do
   alias Zex.ZMachine
   alias Zex.ZMachine.Memory
   alias Zex.ZMachine.Screen
+  alias Zex.ZMachine.Stack
   alias Zex.ZMachine.StackFrame
 
   import Bitwise, only: [band: 2, bor: 2, bnot: 1, bsl: 2, bsr: 2]
@@ -148,7 +149,7 @@ defmodule Zex.ZMachine do
     %ZMachine{
       memory: Memory.load!(filename),
       screen: Screen.new(),
-      stack: [StackFrame.new(nil, nil)],
+      stack: Stack.new(),
       state: :running,
       rand: 1,
     }
@@ -167,14 +168,9 @@ defmodule Zex.ZMachine do
     %ZMachine{z | curIp: addr}
   end
 
-  def getVariable(z, 0) do
-    {stackTop, popped} = StackFrame.pop(List.first(z.stack))
-    z = %ZMachine{z | stack: List.replace_at(z.stack, 0, stackTop)}
-    {z, popped}
-  end
-
   def getVariable(z, v) when v < 0x10 do
-    value = StackFrame.getLocal(List.first(z.stack), v)
+    {stack, value} = Stack.getVariable(z.stack, v)
+    z = %ZMachine{z | stack: stack}
     {z, value}
   end
 
@@ -183,14 +179,9 @@ defmodule Zex.ZMachine do
     {z, value}
   end
 
-  def setVariable(z, 0, value) do
-    stackTop = StackFrame.push(List.first(z.stack), value)
-    %ZMachine{z | stack: List.replace_at(z.stack, 0, stackTop)}
-  end
-
   def setVariable(z, v, value) when v < 0x10 do
-    stackTop = StackFrame.putLocal(List.first(z.stack), v, value)
-    %ZMachine{z | stack: List.replace_at(z.stack, 0, stackTop)}
+    stack = Stack.setVariable(z.stack, v, value)
+    %ZMachine{z | stack: stack}
   end
 
   def setVariable(z, v, value) do
@@ -402,14 +393,47 @@ defmodule Zex.ZMachine do
   end
 
   def i0_save(z) do
-    {:ok, data} = Jason.encode(%{memory: z.memory.written, stack: z.stack})
-    IO.puts(data)
+    saveData = %{
+      memory: z.memory.written,
+      stack: z.stack,
+    }
+    {:ok, data} = Jason.encode(saveData)
+    IO.puts(data <> "\n")
     z
   end
 
   def i0_restore(z) do
-    raise "restore"
+    IO.puts("Enter save data JSON:")
+    case IO.gets(">") do
+      :eof -> z
+      {:error, reason} ->
+        IO.puts("Input error: #{reason}")
+        z
+      data -> restoreFromJson(z, String.trim(data))
+    end
+  end
+
+  def restoreFromJson(z, "") do
     z
+  end
+
+  def restoreFromJson(z, data) do
+    with {:ok, decoded} <- Jason.decode(data),
+         {:ok, memory} <- Memory.fromJson(z.memory, decoded),
+         {:ok, stack} <- Stack.fromJson(decoded)
+    do
+      %ZMachine{z | memory: memory, stack: stack}
+    else
+      {:error, reason} ->
+        IO.puts("Invalid JSON: #{reason}")
+        z
+      :error ->
+        IO.puts("An error")
+        z
+      reason ->
+        IO.puts("Invalid JSON: #{reason}")
+        z
+    end
   end
 
   def i0_restart(z) do
@@ -653,11 +677,11 @@ defmodule Zex.ZMachine do
     addr = elem(z.operands, 0) * 2
     if addr != 0 do
       nLocs = Memory.getByte(z.memory, addr)
-      frame = initCallFrame(z, StackFrame.new(z.nextIp, z.opCodeStore), nLocs, 0)
-      stack = [frame | z.stack]
+      frame = StackFrame.new(z.nextIp, z.opCodeStore)
+      frame = initCallFrame(z, frame, nLocs, 0)
       z = %ZMachine{z |
         nextIp: addr + 1 + nLocs * 2,
-        stack: stack,
+        stack: [frame | z.stack],
       }
       z
     else
@@ -670,13 +694,15 @@ defmodule Zex.ZMachine do
   end
 
   def initCallFrame(z, frame, nLocs, v) when v + 1 < z.operandCount do
-    frame = StackFrame.putLocal(frame, v + 1, elem(z.operands, v + 1))
+    value = elem(z.operands, v + 1)
+    frame = StackFrame.putLocal(frame, v + 1, value)
     initCallFrame(z, frame, nLocs, v + 1)
   end
 
   def initCallFrame(z, frame, nLocs, v) do
     addr = (elem(z.operands, 0) + v) * 2 + 1
-    frame = StackFrame.putLocal(frame, v + 1, Memory.getWord(z.memory, addr))
+    value = Memory.getWord(z.memory, addr)
+    frame = StackFrame.putLocal(frame, v + 1, value)
     initCallFrame(z, frame, nLocs, v + 1)
   end
 

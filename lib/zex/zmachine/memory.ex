@@ -10,6 +10,20 @@ defmodule Zex.ZMachine.Memory do
     |> buildWordSeparators()
   end
 
+  def fromJson(memory, decoded) do
+    written = withIntKeys(decoded["memory"])
+    memory = %Memory{memory | written: written}
+    {:ok, memory}
+  end
+
+  def withIntKeys(map) when is_map(map) do
+    remap = fn {key, value}, map ->
+      {key, ""} = Integer.parse(key)
+      Map.put(map, key, value)
+    end
+    Enum.reduce(map, %{}, remap)
+  end
+
   def buildWordSeparators(memory) do
     addr = getAddrDict(memory)
     sepList = buildSepList(memory, addr + 1, getByte(memory, addr), [" "])
@@ -219,41 +233,45 @@ defmodule Zex.ZMachine.Memory do
   end
 
   def insertObj(memory, objNo, parent) do
-    memory = removeObj(memory, objNo)
-    c = getObjChild(memory, parent)
     memory
-    |> setObjSibling(objNo, c)
+    |> removeObj(objNo)
+    |> setObjSibling(objNo, getObjChild(memory, parent))
     |> setObjChild(parent, objNo)
     |> setObjParent(objNo, parent)
   end
 
   def removeObj(memory, objNo) do
     parent = getObjParent(memory, objNo)
-    if parent != 0 do
-      sibling = getObjSibling(memory, objNo)
-      parentChild = getObjChild(memory, parent)
-      memory = setObjParent(memory, objNo, 0)
-      memory = setObjSibling(memory, objNo, 0)
-      if parentChild == objNo do
-        setObjChild(memory, parent, sibling)
-      else
-        prevSib = findPrevObj(memory, objNo, parentChild)
-        setObjSibling(memory, prevSib, sibling)
-      end
-    else
-      memory
-    end
+    removeObjFromParent(memory, objNo, parent)
   end
 
-  def findPrevObj(memory, objNo, prev) do
-    next = getObjSibling(memory, prev)
-    if next == 0 do
-      raise "Bad object"
-    end
-    if next == objNo do
-      prev
-    else
-      findPrevObj(memory, objNo, next)
+  def removeObjFromParent(memory, _objNo, 0) do
+    memory
+  end
+
+  def removeObjFromParent(memory, objNo, parent) do
+    nextSibling = getObjSibling(memory, objNo)
+    firstSibling = getObjChild(memory, parent)
+    memory
+    |> setObjParent(objNo, 0)
+    |> setObjSibling(objNo, 0)
+    |> removeChild(objNo, parent, firstSibling, nextSibling)
+  end
+
+  def removeChild(memory, objNo, parent, objNo, nextSibling) do
+    setObjChild(memory, parent, nextSibling)
+  end
+
+  def removeChild(memory, objNo, _parent, firstSibling, nextSibling) do
+    prevSibling = findPrevSibling(memory, objNo, firstSibling)
+    setObjSibling(memory, prevSibling, nextSibling)
+  end
+
+  def findPrevSibling(memory, objNo, prevSibling) do
+    case getObjSibling(memory, prevSibling) do
+      0 -> raise "Bad object"
+      ^objNo -> prevSibling
+      nextSibling -> findPrevSibling(memory, objNo, nextSibling)
     end
   end
 
@@ -329,6 +347,8 @@ defmodule Zex.ZMachine.Memory do
          {:ok, memory} <- parseText(memory, input, parseAddr)
     do
       {:ok, memory}
+    else
+      err -> err
     end
   end
 
@@ -347,7 +367,6 @@ defmodule Zex.ZMachine.Memory do
   end
 
   def tokenizeText(memory, "", textAddr) do
-    %Memory{} = memory
     memory = putByte(memory, textAddr + 1, 0)
     {:ok, memory}
   end
@@ -369,13 +388,11 @@ defmodule Zex.ZMachine.Memory do
 
   def tokenizePutText(memory, input, addr, index, count) do
     <<c>> = String.at(input, index)
-    %Memory{} = memory
     memory = putByte(memory, addr, c)
     tokenizePutText(memory, input, addr + 1, index + 1, count - 1)
   end
 
   def parseText(memory, "", parseAddr) do
-    %Memory{} = memory
     memory = putByte(memory, parseAddr + 1, 0)
     {:ok, memory}
   end
@@ -384,9 +401,10 @@ defmodule Zex.ZMachine.Memory do
     wordLimit = getByte(memory, parseAddr)
     with {:ok, memory, wordCount} <- parseWords(memory, input, parseAddr + 2, 0, 0, wordLimit)
     do
-      %Memory{} = memory
       memory = putByte(memory, parseAddr + 1, wordCount)
       {:ok, memory}
+    else
+      err -> err
     end
   end
 
@@ -395,20 +413,23 @@ defmodule Zex.ZMachine.Memory do
   end
 
   def parseWords(memory, input, wordAddr, wordOff, wordCount, wordLimit) do
-    {wordOff, wordEnd, nextOff} = findEndOfWord(memory, input, wordOff)
+    {wordOff, wordEnd} = findEndOfWord(memory, input, wordOff)
+    parseWord(memory, input, wordAddr, wordOff, wordEnd, wordCount, wordLimit)
+  end
+
+  def parseWord(memory, _input, _wordAddr, wordOff, wordOff, wordCount, _wordLimit) do
+    {:ok, memory, wordCount}
+  end
+
+  def parseWord(memory, input, wordAddr, wordOff, wordEnd, wordCount, wordLimit) do
     word = binary_part(input, wordOff, wordEnd - wordOff)
     token = makeToken(word)
     addrDictEntry = findInDict(memory, token)
-    memory = putWord(memory, wordAddr, addrDictEntry)
-    %Memory{} = memory
-    memory = putByte(memory, wordAddr + 2, wordEnd - wordOff)
-    %Memory{} = memory
-    memory = putByte(memory, wordAddr + 3, wordOff + 1)
-    if nextOff < 0 do
-      {:ok, memory, wordCount + 1}
-    else
-      parseWords(memory, input, wordAddr + 4, nextOff, wordCount + 1, wordLimit - 1)
-    end
+    memory
+    |> putWord(wordAddr, addrDictEntry)
+    |> putByte(wordAddr + 2, wordEnd - wordOff)
+    |> putByte(wordAddr + 3, wordOff + 1)
+    |> parseWords(input, wordAddr + 4, wordEnd, wordCount + 1, wordLimit - 1)
   end
 
   def makeToken(word) do
@@ -463,8 +484,9 @@ defmodule Zex.ZMachine.Memory do
     wordOff = skipLeadingSpace(input, wordOff)
     rest = binary_part(input, wordOff, String.length(input) - wordOff)
     case :binary.match(rest, memory.wordSepList) do
-      :nomatch -> {wordOff, String.length(input), -1}
-      {off, _} -> {wordOff, wordOff + max(off, 1), wordOff + max(off, 1)}
+      :nomatch -> {wordOff, String.length(input)}
+      {0, _} -> {wordOff, wordOff + 1}
+      {off, _} -> {wordOff, wordOff + off}
     end
   end
 
