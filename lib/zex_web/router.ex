@@ -18,7 +18,6 @@ defmodule ZexWeb.Router do
   scope "/", ZexWeb do
     pipe_through :browser
 
-    # get "/", PageController, :home
     live "/", GameLive
   end
 
